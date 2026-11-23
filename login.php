@@ -1,6 +1,6 @@
 <?php
-// الجلسة تبدأ أول شيء، قبل أي إخراج
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
 require_once __DIR__ . '/db.php';
