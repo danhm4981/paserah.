@@ -12,6 +12,5 @@
             <footer>
         <p>© <?php echo date("Y"); ?> بصيرة - جميع الحقوق محفوظة</p>
     </footer>
-<?php include __DIR__ . '/../notify-widget.php'; ?>
 </body>
 </html>
