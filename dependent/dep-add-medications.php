@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Riyadh');
 
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
 
@@ -203,12 +204,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $target_user_id) {
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 
 <style>
-
-       .dashboard-layout {
+.dashboard-layout {
     display: flex;
-    flex-direction: row; 
+    flex-direction: row;
     justify-content: flex-start;
-    align-items: flex-start;
+    align-items: stretch;
     min-height: calc(100vh - 140px);
     width: 100%;
     max-width: 100%;
@@ -277,8 +277,13 @@ textarea{
     min-height:48px;
     resize:vertical;
 }
-input,select,textarea{width:100%;
-padding:12px;border:1px solid #ddd;border-radius:10px;}
+
+input,select,textarea{
+    width:100%;
+    padding:12px;
+    border:1px solid #ddd;
+    border-radius:10px;
+}
 
 .row{
     display:grid;
@@ -332,7 +337,6 @@ padding:12px;border:1px solid #ddd;border-radius:10px;}
 }
 
 @media(max-width:768px){
-
     .row{
         grid-template-columns:1fr;
     }
@@ -345,12 +349,7 @@ padding:12px;border:1px solid #ddd;border-radius:10px;}
         display:none;
     }
 }
-.dashboard-layout {
-    display: flex;
-    align-items: stretch;
-    min-height: calc(100vh - 140px);
-    width: 100%;
-}
+
 .container{
     flex: 1;
     display: flex;
@@ -358,6 +357,7 @@ padding:12px;border:1px solid #ddd;border-radius:10px;}
     align-items: flex-start;
     padding: 40px;
 }
+
 .page-header{
     background:#fff;
     border-radius:20px;
@@ -432,128 +432,127 @@ select{
 
             <form method="POST" enctype="multipart/form-data">
 
-<div class="form-group">
-<label> اسم الدواء</label>
-<input
-type="text"
-name="medication_name"
-required
-placeholder="مثال: أموكسيسيلين">
-</div>
+                <div class="form-group">
+                    <label>اسم الدواء</label>
+                    <input
+                        type="text"
+                        name="medication_name"
+                        required
+                        placeholder="مثال: أموكسيسيلين">
+                </div>
 
-<div class="form-group">
-<label> صورة الدواء</label>
-    <input type="file"
-           name="medication_image"
-           accept="image/*">
-</div>
+                <div class="form-group">
+                    <label>صورة الدواء</label>
+                    <input type="file"
+                           name="medication_image"
+                           accept="image/*">
+                </div>
 
-<div class="row">
+                <div class="row">
 
-    <div class="form-group">
-        <label>الجرعة</label>
-        <input type="number" step="0.01" name="dose_amount" required>
-    </div>
+                    <div class="form-group">
+                        <label>الجرعة</label>
+                        <input type="number" step="0.01" name="dose_amount" required>
+                    </div>
 
-    <div class="form-group">
-        <label>الوحدة</label>
-        <select name="dose_unit" required>
-            <option value="mg">mg</option>
-            <option value="ml">ml</option>
-            <option value="g">g</option>
-        </select>
-    </div>
+                    <div class="form-group">
+                        <label>الوحدة</label>
+                        <select name="dose_unit" required>
+                            <option value="mg">mg</option>
+                            <option value="ml">ml</option>
+                            <option value="g">g</option>
+                        </select>
+                    </div>
 
-    <div class="form-group">
-        <label>لون الدواء</label>
-        <select name="medication_color" required>
-            <option value="">اختر اللون</option>
-            <option value="أبيض">أبيض</option>
-            <option value="أحمر">أحمر</option>
-            <option value="أزرق">أزرق</option>
-            <option value="أخضر">أخضر</option>
-            <option value="أصفر">أصفر</option>
-            <option value="برتقالي">برتقالي</option>
-            <option value="وردي">وردي</option>
-            <option value="بني">بني</option>
-        </select>
-    </div>
+                    <div class="form-group">
+                        <label>لون الدواء</label>
+                        <select name="medication_color" required>
+                            <option value="">اختر اللون</option>
+                            <option value="أبيض">أبيض</option>
+                            <option value="أحمر">أحمر</option>
+                            <option value="أزرق">أزرق</option>
+                            <option value="أخضر">أخضر</option>
+                            <option value="أصفر">أصفر</option>
+                            <option value="برتقالي">برتقالي</option>
+                            <option value="وردي">وردي</option>
+                            <option value="بني">بني</option>
+                        </select>
+                    </div>
 
-</div>
+                </div>
 
-<div class="form-group">
+                <div class="form-group">
 
-<label>شكل الدواء</label>
+                    <label>شكل الدواء</label>
 
-<div class="medicine-types">
+                    <div class="medicine-types">
 
-<label>
-<input type="radio" name="medication_shape" value="أقراص" required>
-أقراص
-</label>
+                        <label>
+                            <input type="radio" name="medication_shape" value="أقراص" required>
+                            أقراص
+                        </label>
 
-<label>
-<input type="radio" name="medication_shape" value="كبسول">
-كبسول
-</label>
+                        <label>
+                            <input type="radio" name="medication_shape" value="كبسول">
+                            كبسول
+                        </label>
 
-<label>
-<input type="radio" name="medication_shape" value="شراب">
-شراب
-</label>
+                        <label>
+                            <input type="radio" name="medication_shape" value="شراب">
+                            شراب
+                        </label>
 
-<label>
-<input type="radio" name="medication_shape" value="حقن">
-حقن
-</label>
+                        <label>
+                            <input type="radio" name="medication_shape" value="حقن">
+                            حقن
+                        </label>
 
-<label>
-<input type="radio" name="medication_shape" value="قطرة">
-قطرة
-</label>
+                        <label>
+                            <input type="radio" name="medication_shape" value="قطرة">
+                            قطرة
+                        </label>
 
-<label>
-<input type="radio" name="medication_shape" value="لصقة">
-لصقة
-</label>
+                        <label>
+                            <input type="radio" name="medication_shape" value="لصقة">
+                            لصقة
+                        </label>
 
-</div>
+                    </div>
 
-</div>
+                </div>
 
+                <div class="row">
 
-<div class="row">
+                    <div class="form-group">
+                        <label>وقت الجرعة</label>
+                        <input type="time" name="dosage_time" required>
+                    </div>
 
-    <div class="form-group">
-        <label>وقت الجرعة</label>
-        <input type="time" name="dosage_time" required>
-    </div>
+                    <div class="form-group">
+                        <label>من تاريخ</label>
+                        <input type="date" name="start_date" required>
+                    </div>
 
-    <div class="form-group">
-        <label>من تاريخ</label>
-        <input type="date" name="start_date" required>
-    </div>
+                    <div class="form-group">
+                        <label>إلى تاريخ</label>
+                        <input type="date" name="end_date" required>
+                    </div>
 
-    <div class="form-group">
-        <label>إلى تاريخ</label>
-        <input type="date" name="end_date" required>
-    </div>
+                </div>
 
-</div>
+                <div class="form-group">
+                    <label>ملاحظات</label>
+                    <textarea
+                        name="notes"
+                        rows="2"
+                        maxlength="3000"
+                        placeholder="يؤخذ بعد الأكل"></textarea>
+                </div>
 
-<div class="form-group">
-    <label>ملاحظات</label>
-    <textarea
-        name="notes"
-        rows="2"
-        maxlength="3000"
-        placeholder="يؤخذ بعد الأكل"></textarea>
-</div>
-
-<div class="actions">
-    <button type="submit" class="save-btn">حفظ الدواء</button>
-    <button type="reset" class="cancel-btn">إلغاء</button>
-</div>
+                <div class="actions">
+                    <button type="submit" class="save-btn">حفظ الدواء</button>
+                    <button type="reset" class="cancel-btn">إلغاء</button>
+                </div>
 
             </form>
 
@@ -564,9 +563,6 @@ placeholder="مثال: أموكسيسيلين">
     </div>
 
 </div>
-    <?php include __DIR__ . '/../includes/footer.php'; ?>
-
-
-
+<?php include __DIR__ . '/../includes/footer.php'; ?>
 </body>
 </html>
