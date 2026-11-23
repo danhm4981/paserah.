@@ -1,7 +1,7 @@
 <?php
 // بيانات الاتصال بقاعدة بيانات بصيرة
 $host = 'localhost';
-$dbname = 'baseerah_db';
+$dbname = 'paserah_db';
 $username = 'root';
 $password = '';
 try {
