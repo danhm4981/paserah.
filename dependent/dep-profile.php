@@ -1,5 +1,6 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
 
@@ -84,7 +85,6 @@ try {
 } catch (PDOException $e) {
     error_log($e->getMessage());
 }
-
 include __DIR__ . '/../includes/header.php';
 ?>
 <!DOCTYPE html>
