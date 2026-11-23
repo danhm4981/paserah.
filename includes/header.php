@@ -1,18 +1,21 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
 
-
 $hdr_logged_in = isset($_SESSION['user_id']);
-$hdr_account_type = $_SESSION['account_type'] ?? ($_SESSION['user_type'] ?? '');
+$hdr_account_type = strtolower(trim($_SESSION['account_type'] ?? ($_SESSION['user_type'] ?? '')));
 
 $hdr_profile_url = ($hdr_account_type === 'dependent')
-    ? '/danah/GProject/paserah/dependent/dep-profile.php'
-    : '/danah/GProject/paserah/profile.php';
+    ? '/danah/hackathon/paserah-hackathon/dependent/dep-profile.php'
+    : '/danah/hackathon/paserah-hackathon/profile.php';
 ?>
 <!DOCTYPE html>
+<html lang="ar" dir="rtl">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         :root {
             --primary-color: #008080;
@@ -29,14 +32,14 @@ $hdr_profile_url = ($hdr_account_type === 'dependent')
             padding: 0;
             font-family: 'Tajawal', sans-serif;
         }
-            body {
+
+        body {
             background-color: var(--bg-light);
             color: var(--text-color);
             line-height: 1.6;
             direction: rtl;
         }
-      
-        
+
         header {
             background-color: var(--white);
             padding: 15px 5%;
@@ -78,6 +81,12 @@ $hdr_profile_url = ($hdr_account_type === 'dependent')
 
         .nav-links a:hover {
             color: var(--primary-color);
+        }
+
+        .buttons {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .btn {
@@ -128,17 +137,19 @@ $hdr_profile_url = ($hdr_account_type === 'dependent')
             transform: translateY(-1px);
         }
     </style>
-   <header>
+</head>
+<body>
+    <header>
         <nav>
             <div class="logo">
-                           <img src="/danah/GProject/paserah/logo.png" alt="شعار بصيرة" style="height: 45px; width: auto; object-fit: contain;">
+                <img src="/danah/hackathon/paserah-hackathon/logo.png" alt="شعار بصيرة" style="height: 45px; width: auto; object-fit: contain;">
                 <span>بصيرة</span>
             </div>
             <ul class="nav-links">
-           <a href="/danah/GProject/paserah/index.php">الرئيسية</a>
-           <a href="/danah/GProject/paserah/about.php">عن بصيرة</a>
-           <a href="/danah/GProject/paserah/index.php#features">المميزات</a>
-        <a href="/danah/GProject/paserah/contact.php">تواصل معنا</a>
+                <li><a href="/danah/hackathon/paserah-hackathon/index.php">الرئيسية</a></li>
+                <li><a href="/danah/hackathon/paserah-hackathon/about.php">عن بصيرة</a></li>
+                <li><a href="/danah/hackathon/paserah-hackathon/index.php#features">المميزات</a></li>
+                <li><a href="/danah/hackathon/paserah-hackathon/contact.php">تواصل معنا</a></li>
             </ul>
             <div class="buttons">
                 <?php if ($hdr_logged_in): ?>
@@ -153,11 +164,9 @@ $hdr_profile_url = ($hdr_account_type === 'dependent')
                         </svg>
                     </a>
                 <?php else: ?>
-                    <a href="/danah/GProject/paserah/register.php" class="btn btn-outline">إنشاء حساب</a>
-                    <a href="/danah/GProject/paserah/login.php" class="btn btn-primary">تسجيل الدخول</a>
+                    <a href="/danah/hackathon/paserah-hackathon/register.php" class="btn btn-outline">إنشاء حساب</a>
+                    <a href="/danah/hackathon/paserah-hackathon/login.php" class="btn btn-primary">تسجيل الدخول</a>
                 <?php endif; ?>
             </div>
         </nav>
     </header>
-</body>
-</html>
