@@ -1,15 +1,125 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
+date_default_timezone_set('Asia/Riyadh');
 require_once __DIR__ . '/db.php';
 
 $current_user_id = $_SESSION['user_id'] ?? null;
 
-// فحص تسجيل الدخول قبل أي إخراج
 if (!$current_user_id) {
     header("Location: login.php");
     exit;
+}
+
+$DURATION_OPTIONS = [
+    'ongoing'      => 'مستمر (دائم)',
+    '5'            => 'لمدة 5 أيام',
+    '7'            => 'لمدة 7 أيام (أسبوع)',
+    '10'           => 'لمدة 10 أيام',
+    '14'           => 'لمدة 14 يوماً (أسبوعين)',
+    '30'           => 'لمدة 30 يوماً (شهر)',
+    'custom_dates' => 'تحديد تاريخ بداية ونهاية',
+];
+
+function valid_date(string $d): bool
+{
+    $dt = DateTime::createFromFormat('Y-m-d', $d);
+    return $dt && $dt->format('Y-m-d') === $d;
+}
+
+function detect_duration_key(?string $start_date, ?string $end_date): string
+{
+    if (empty($end_date)) {
+        return 'ongoing';
+    }
+    if (!empty($start_date)) {
+        $s = DateTime::createFromFormat('Y-m-d', $start_date);
+        $e = DateTime::createFromFormat('Y-m-d', $end_date);
+        if ($s && $e) {
+            $days = (int) $s->diff($e)->days + 1;
+            foreach (['5', '7', '10', '14', '30'] as $presetDays) {
+                if ($days === (int) $presetDays) {
+                    return $presetDays;
+                }
+            }
+        }
+    }
+    return 'custom_dates';
+}
+
+function format_duration_label(?string $start_date, ?string $end_date): string
+{
+    if (empty($end_date)) {
+        return 'مستمر (دائم)';
+    }
+    if (empty($start_date)) {
+        return 'حتى ' . $end_date;
+    }
+
+    $start = DateTime::createFromFormat('Y-m-d', $start_date);
+    $end = DateTime::createFromFormat('Y-m-d', $end_date);
+    if (!$start || !$end) {
+        return $start_date . ' إلى ' . $end_date;
+    }
+
+    $days = (int) $start->diff($end)->days + 1;
+    $days_text = $days === 1 ? 'يوم واحد' : ($days === 2 ? 'يومان' : ($days <= 10 ? $days . ' أيام' : $days . ' يوماً'));
+    return $days_text . ' (من ' . $start_date . ' إلى ' . $end_date . ')';
+}
+
+function format_doses_count_label(int $count): string
+{
+    if ($count <= 0) {
+        return 'غير محدد';
+    }
+    if ($count === 1) {
+        return 'مرة واحدة يومياً';
+    }
+    if ($count === 2) {
+        return 'مرتان يومياً';
+    }
+    if ($count <= 10) {
+        return $count . ' مرات يومياً';
+    }
+    return $count . ' مرة يومياً';
+}
+
+function build_times_for_count(int $count, array $existing_times = []): array
+{
+    $count = max(1, $count);
+    $clean = [];
+    foreach ($existing_times as $t) {
+        $t = trim((string) $t);
+        if ($t !== '') {
+            $clean[] = (strlen($t) === 5) ? $t . ':00' : $t;
+        }
+    }
+
+    if (count($clean) >= $count) {
+        return array_slice($clean, 0, $count);
+    }
+
+    $base = !empty($clean)
+        ? DateTime::createFromFormat('H:i:s', substr($clean[0], 0, 5) . ':00')
+        : DateTime::createFromFormat('H:i:s', '08:00:00');
+    if (!$base) {
+        $base = new DateTime('08:00:00');
+    }
+
+    $step_minutes = (int) round((24 * 60) / $count);
+    $result = [];
+    for ($i = 0; $i < $count; $i++) {
+        if (isset($clean[$i])) {
+            $result[] = $clean[$i];
+        } else {
+            $dt = clone $base;
+            $dt->modify('+' . ($i * $step_minutes) . ' minutes');
+            $result[] = $dt->format('H:i:s');
+        }
+    }
+    return $result;
 }
 
 $medications = [];
@@ -18,50 +128,132 @@ $error = "";
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-        // حذف دواء (يخص المريض الحالي فقط)
+        // حذف دواء (يخص المستخدم الحالي فقط)
         if (isset($_POST['delete_medicine'])) {
             $id = (int) ($_POST['medication_id'] ?? 0);
 
-            $stmt = $pdo->prepare(
-                "DELETE FROM medications WHERE medication_id = ? AND user_id = ?"
-            );
-            $stmt->execute([$id, $current_user_id]);
+            $stmt_img = $pdo->prepare("SELECT medication_image FROM medications WHERE medication_id = ? AND user_id = ?");
+            $stmt_img->execute([$id, $current_user_id]);
+            $img_row = $stmt_img->fetch();
 
-            header("Location: medications.php");
-            exit;
-        }
+            if ($img_row) {
+                $pdo->beginTransaction();
+                $pdo->prepare("DELETE FROM dosage_schedules WHERE medication_id = ?")->execute([$id]);
+                $stmt = $pdo->prepare("DELETE FROM medications WHERE medication_id = ? AND user_id = ?");
+                $stmt->execute([$id, $current_user_id]);
+                $pdo->commit();
 
-        // تعديل دواء (يخص المريض الحالي فقط)
-        if (isset($_POST['update_medicine'])) {
-            $id = (int) ($_POST['medication_id'] ?? 0);
-            $name = trim($_POST['medication_name'] ?? '');
-            $shape = trim($_POST['medication_shape'] ?? '');
-            $color = trim($_POST['medication_color'] ?? '');
-            $description = trim($_POST['medication_description'] ?? '');
-
-            if ($name !== '' && $shape !== '') {
-                $stmt = $pdo->prepare(
-                    "UPDATE medications
-                     SET medication_name = ?,
-                         medication_shape = ?,
-                         medication_color = ?,
-                         medication_description = ?
-                     WHERE medication_id = ? AND user_id = ?"
-                );
-                $stmt->execute([$name, $shape, $color, $description, $id, $current_user_id]);
+                if (!empty($img_row['medication_image'])) {
+                    @unlink(__DIR__ . '/uploads/' . basename($img_row['medication_image']));
+                }
             }
 
             header("Location: medications.php");
             exit;
         }
+
+        // تعديل اسم الدواء وعدد الجرعات والمدة في قاعدة البيانات
+        if (isset($_POST['update_medicine'])) {
+            $id = (int) ($_POST['medication_id'] ?? 0);
+            $name = trim($_POST['medication_name'] ?? '');
+            $doses_count = (int) ($_POST['doses_count'] ?? 1);
+            $duration_choice = trim($_POST['duration_choice'] ?? 'ongoing');
+
+            $stmt_own = $pdo->prepare("SELECT medication_id FROM medications WHERE medication_id = ? AND user_id = ?");
+            $stmt_own->execute([$id, $current_user_id]);
+            $owned = $stmt_own->fetch();
+
+            if ($owned && $name !== '' && $doses_count >= 1 && isset($DURATION_OPTIONS[$duration_choice])) {
+                $start_date = date('Y-m-d');
+                $end_date = null;
+                $dates_valid = true;
+
+                if ($duration_choice === 'custom_dates') {
+                    $start_date = trim($_POST['start_date'] ?? '');
+                    $end_date = trim($_POST['end_date'] ?? '');
+                    if (!valid_date($start_date) || !valid_date($end_date) || $end_date < $start_date) {
+                        $dates_valid = false;
+                        $error = "تاريخ البداية أو النهاية غير صحيح.";
+                    }
+                } elseif ($duration_choice !== 'ongoing') {
+                    $days = (int) $duration_choice;
+                    $end_date = date('Y-m-d', strtotime('+' . max(0, $days - 1) . ' days'));
+                }
+
+                if ($dates_valid) {
+                    $stmt_old_times = $pdo->prepare("
+                        SELECT dosage_time, dose_amount, dose_unit, status
+                        FROM dosage_schedules
+                        WHERE medication_id = ?
+                        ORDER BY dosage_time ASC, schedule_id ASC
+                    ");
+                    $stmt_old_times->execute([$id]);
+                    $old_rows = $stmt_old_times->fetchAll();
+
+                    $old_times = array_column($old_rows, 'dosage_time');
+                    $new_times = build_times_for_count($doses_count, $old_times);
+
+                    $pdo->beginTransaction();
+
+                    $stmt_upd_med = $pdo->prepare("
+                        UPDATE medications
+                        SET medication_name = ?
+                        WHERE medication_id = ? AND user_id = ?
+                    ");
+                    $stmt_upd_med->execute([$name, $id, $current_user_id]);
+
+                    $pdo->prepare("DELETE FROM dosage_schedules WHERE medication_id = ?")->execute([$id]);
+
+                    $stmt_ins_sched = $pdo->prepare("
+                        INSERT INTO dosage_schedules
+                            (medication_id, dose_amount, dose_unit, dosage_time, start_date, end_date, status)
+                        VALUES
+                            (:medication_id, :dose_amount, :dose_unit, :dosage_time, :start_date, :end_date, :status)
+                    ");
+
+                    foreach ($new_times as $idx => $time_val) {
+                        $prev = $old_rows[$idx] ?? null;
+                        $stmt_ins_sched->execute([
+                            'medication_id' => $id,
+                            'dose_amount'   => $prev['dose_amount'] ?? 1,
+                            'dose_unit'     => $prev['dose_unit'] ?? 'حبة',
+                            'dosage_time'   => $time_val,
+                            'start_date'    => $start_date,
+                            'end_date'      => $end_date,
+                            'status'        => $prev['status'] ?? 'pending',
+                        ]);
+                    }
+
+                    $pdo->commit();
+                    header("Location: medications.php");
+                    exit;
+                }
+            }
+        }
     }
 
-    // جلب أدوية المريض المرتبط بالجلسة الحالية فقط
-    $stmt = $pdo->prepare("SELECT * FROM medications WHERE user_id = ? ORDER BY medication_id DESC");
+    $stmt = $pdo->prepare("
+        SELECT
+            m.medication_id,
+            m.medication_name,
+            m.medication_image,
+            COUNT(s.schedule_id) AS doses_count,
+            MIN(s.start_date) AS start_date,
+            MAX(s.end_date) AS end_date
+        FROM medications m
+        LEFT JOIN dosage_schedules s ON s.medication_id = m.medication_id
+        WHERE m.user_id = ?
+        GROUP BY m.medication_id, m.medication_name, m.medication_image
+        ORDER BY m.medication_id DESC
+    ");
     $stmt->execute([$current_user_id]);
     $medications = $stmt->fetchAll();
 
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log($e->getMessage());
     $error = "حدث خطأ أثناء معالجة البيانات، حاول مرة أخرى لاحقاً.";
 }
 
@@ -108,15 +300,31 @@ include __DIR__ . '/includes/header.php';
             border-radius: 15px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.03);
             overflow-wrap: anywhere;
+            display: flex;
+            flex-direction: column;
+        }
+        .med-thumb {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 12px;
+            margin-bottom: 14px;
+            border: 1px solid #e6efef;
+            background: #f8fcfc;
         }
         .med-card h3 {
             color: var(--text-color, #2b3e42);
-            margin-bottom: 10px;
+            margin-bottom: 12px;
+            font-size: 19px;
         }
         .med-info {
             color: var(--text-muted, #557075);
             font-size: 14px;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        .med-info strong {
+            color: var(--primary-color, #008080);
         }
         .empty-notice {
             background: white;
@@ -131,19 +339,63 @@ include __DIR__ . '/includes/header.php';
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 20px;
+            margin-top: auto;
+            padding-top: 16px;
+        }
+        .med-actions button,
+        .edit-form button {
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: 1.5px solid var(--primary-color, #008080);
+            background: #e9f8f8;
+            color: var(--primary-color, #008080);
+            font-family: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .med-actions button[name="delete_medicine"] {
+            border-color: #d9534f;
+            background: #fdf2f2;
+            color: #d9534f;
         }
         .edit-form {
             display: none;
             margin-top: 15px;
+            padding-top: 14px;
+            border-top: 1px dashed #d5e5e5;
         }
-        .edit-form input {
+        .edit-form.active {
+            display: block;
+        }
+        .edit-field {
+            margin-bottom: 10px;
+        }
+        .edit-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: #2b3e42;
+            margin-bottom: 4px;
+        }
+        .edit-form input,
+        .edit-form select {
             width: 100%;
-            padding: 10px;
-            margin: 6px 0;
+            padding: 9px 10px;
             border: 1px solid var(--border-color, #d5e0e2);
             border-radius: 10px;
             font-family: inherit;
+            font-size: 14px;
+            background: #fff;
+        }
+        .custom-dates-box {
+            display: none;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f4fafa;
+            border-radius: 10px;
+        }
+        .custom-dates-box.active {
+            display: block;
         }
 
         @media (max-width: 900px) {
@@ -166,37 +418,87 @@ include __DIR__ . '/includes/header.php';
         <?php include __DIR__ . '/includes/sidebar.php'; ?>
         <main class="main-content">
             <h1 class="page-title">أدويتي</h1>
-            <p class="page-sub">إدارة الأدوية والجرعات والمواعيد</p>
+            <p class="page-sub">عرض الأدوية مع عدد الجرعات والمدة</p>
 
             <div class="meds-grid">
                 <?php if ($error): ?>
-                    <div class="empty-notice"><p><?= htmlspecialchars($error) ?></p></div>
+                    <div class="empty-notice"><p><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></p></div>
 
                 <?php elseif (!empty($medications)): ?>
                     <?php foreach ($medications as $med): ?>
+                        <?php
+                            $med_id = (int) $med['medication_id'];
+                            $img_file = !empty($med['medication_image']) ? basename($med['medication_image']) : '';
+                            $img_path = ($img_file !== '' && file_exists(__DIR__ . '/uploads/' . $img_file))
+                                ? 'uploads/' . rawurlencode($img_file)
+                                : '';
+                            $current_doses = max(1, (int) ($med['doses_count'] ?? 1));
+                            $current_dur_key = detect_duration_key($med['start_date'] ?? null, $med['end_date'] ?? null);
+                        ?>
                         <div class="med-card">
-                            <h3>💊 <?= htmlspecialchars($med['medication_name']) ?></h3>
-                            <p class="med-info"><strong>الشكل:</strong> <?= htmlspecialchars($med['medication_shape'] ?? '') ?></p>
-                            <p class="med-info"><strong>اللون:</strong> <?= htmlspecialchars($med['medication_color'] ?? '') ?></p>
-                            <?php if (!empty($med['medication_description'])): ?>
-                                <p class="med-info"><strong>ملاحظات:</strong> <?= htmlspecialchars($med['medication_description']) ?></p>
+                            <?php if ($img_path !== ''): ?>
+                                <img src="<?= htmlspecialchars($img_path, ENT_QUOTES, 'UTF-8') ?>"
+                                     alt="<?= htmlspecialchars($med['medication_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                     class="med-thumb">
                             <?php endif; ?>
 
+                            <h3>💊 <?= htmlspecialchars($med['medication_name'], ENT_QUOTES, 'UTF-8') ?></h3>
+
+                            <p class="med-info"><strong>عدد الجرعات:</strong> <?= htmlspecialchars(format_doses_count_label((int) $med['doses_count']), ENT_QUOTES, 'UTF-8') ?></p>
+                            <p class="med-info"><strong>المدة:</strong> <?= htmlspecialchars(format_duration_label($med['start_date'] ?? null, $med['end_date'] ?? null), ENT_QUOTES, 'UTF-8') ?></p>
+
                             <div class="med-actions">
-                                <button type="button" onclick="toggleEdit(<?= (int)$med['medication_id'] ?>)">تعديل</button>
+                                <button type="button" onclick="toggleEdit(<?= $med_id ?>)">تعديل</button>
 
                                 <form method="POST" onsubmit="return confirm('متأكد من الحذف؟');">
-                                    <input type="hidden" name="medication_id" value="<?= (int)$med['medication_id'] ?>">
+                                    <input type="hidden" name="medication_id" value="<?= $med_id ?>">
                                     <button type="submit" name="delete_medicine">حذف</button>
                                 </form>
                             </div>
 
-                            <form method="POST" class="edit-form" id="edit-<?= (int)$med['medication_id'] ?>">
-                                <input type="hidden" name="medication_id" value="<?= (int)$med['medication_id'] ?>">
-                                <input type="text" name="medication_name" value="<?= htmlspecialchars($med['medication_name']) ?>" placeholder="اسم الدواء" required>
-                                <input type="text" name="medication_shape" value="<?= htmlspecialchars($med['medication_shape'] ?? '') ?>" placeholder="الشكل" required>
-                                <input type="text" name="medication_color" value="<?= htmlspecialchars($med['medication_color'] ?? '') ?>" placeholder="اللون">
-                                <input type="text" name="medication_description" value="<?= htmlspecialchars($med['medication_description'] ?? '') ?>" placeholder="ملاحظات">
+                            <form method="POST" class="edit-form" id="edit-<?= $med_id ?>">
+                                <input type="hidden" name="medication_id" value="<?= $med_id ?>">
+
+                                <div class="edit-field">
+                                    <label for="name-<?= $med_id ?>">اسم الدواء</label>
+                                    <input type="text" id="name-<?= $med_id ?>" name="medication_name"
+                                           value="<?= htmlspecialchars($med['medication_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                           placeholder="اسم الدواء" required>
+                                </div>
+
+                                <div class="edit-field">
+                                    <label for="doses-<?= $med_id ?>">عدد الجرعات يومياً</label>
+                                    <input type="number" id="doses-<?= $med_id ?>" name="doses_count"
+                                           min="1" step="1" value="<?= $current_doses ?>" required>
+                                </div>
+
+                                <div class="edit-field">
+                                    <label for="dur-<?= $med_id ?>">المدة</label>
+                                    <select id="dur-<?= $med_id ?>" name="duration_choice"
+                                            onchange="toggleCustomDates(<?= $med_id ?>)">
+                                        <?php foreach ($DURATION_OPTIONS as $dKey => $dLabel): ?>
+                                            <option value="<?= htmlspecialchars($dKey, ENT_QUOTES, 'UTF-8') ?>"
+                                                <?= $current_dur_key === $dKey ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($dLabel, ENT_QUOTES, 'UTF-8') ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <div class="custom-dates-box <?= $current_dur_key === 'custom_dates' ? 'active' : '' ?>"
+                                     id="dates-<?= $med_id ?>">
+                                    <div class="edit-field">
+                                        <label for="start-<?= $med_id ?>">من تاريخ</label>
+                                        <input type="date" id="start-<?= $med_id ?>" name="start_date"
+                                               value="<?= htmlspecialchars($med['start_date'] ?? date('Y-m-d'), ENT_QUOTES, 'UTF-8') ?>">
+                                    </div>
+                                    <div class="edit-field">
+                                        <label for="end-<?= $med_id ?>">إلى تاريخ</label>
+                                        <input type="date" id="end-<?= $med_id ?>" name="end_date"
+                                               value="<?= htmlspecialchars($med['end_date'] ?? date('Y-m-d', strtotime('+7 days')), ENT_QUOTES, 'UTF-8') ?>">
+                                    </div>
+                                </div>
+
                                 <button type="submit" name="update_medicine">حفظ التعديل</button>
                             </form>
                         </div>
@@ -214,7 +516,17 @@ include __DIR__ . '/includes/header.php';
     <script>
         function toggleEdit(id) {
             const form = document.getElementById('edit-' + id);
-            form.style.display = form.style.display === 'block' ? 'none' : 'block';
+            form.classList.toggle('active');
+        }
+        function toggleCustomDates(id) {
+            const sel = document.getElementById('dur-' + id);
+            const box = document.getElementById('dates-' + id);
+            if (!sel || !box) return;
+            if (sel.value === 'custom_dates') {
+                box.classList.add('active');
+            } else {
+                box.classList.remove('active');
+            }
         }
     </script>
 </body>
