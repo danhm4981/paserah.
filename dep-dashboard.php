@@ -2,8 +2,10 @@
 date_default_timezone_set('Asia/Riyadh');
 
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
+date_default_timezone_set('Asia/Riyadh');
 
 require_once __DIR__ . '/db.php';
 
@@ -18,7 +20,7 @@ if (
 $dependent_id = (int) $_SESSION['user_id'];
 
 $patient = null;
-$link_state = 'none';  
+$link_state = 'none';
 
 $today = date('Y-m-d');
 $total_meds = 0;
@@ -49,7 +51,7 @@ try {
             WHERE user_id = ?
         ");
         $stmt_med->execute([$patient_id]);
-        $total_meds = $stmt_med->fetch()['total_meds'] ?? 0;
+        $total_meds = (int) ($stmt_med->fetch()['total_meds'] ?? 0);
 
         $stmt_doses = $pdo->prepare("
             SELECT COUNT(*) AS today_doses,
@@ -65,9 +67,9 @@ try {
         $doses_stats = $stmt_doses->fetch();
 
         if ($doses_stats) {
-            $today_doses = $doses_stats['today_doses'] ?? 0;
-            $taken_doses = $doses_stats['taken_doses'] ?? 0;
-            $pending_doses = $doses_stats['pending_doses'] ?? 0;
+            $today_doses = (int) ($doses_stats['today_doses'] ?? 0);
+            $taken_doses = (int) ($doses_stats['taken_doses'] ?? 0);
+            $pending_doses = (int) ($doses_stats['pending_doses'] ?? 0);
         }
 
         $stmt_list = $pdo->prepare("
@@ -82,7 +84,6 @@ try {
         ");
         $stmt_list->execute([$patient_id, $today, $today]);
         $doses_result = $stmt_list->fetchAll();
-
     } else {
         $stmt = $pdo->prepare("
             SELECT status
@@ -100,7 +101,6 @@ try {
             $link_state = 'rejected';
         }
     }
-
 } catch (PDOException $e) {
     error_log($e->getMessage());
 }
@@ -120,16 +120,21 @@ include __DIR__ . '/includes/header.php';
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 
     <style>
-       .dashboard-layout {
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: flex-start;
-    min-height: calc(100vh - 140px);
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-}
+        .dashboard-layout {
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: flex-start;
+            min-height: calc(100vh - 140px);
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+        }
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            padding: 30px;
+        }
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -203,7 +208,7 @@ include __DIR__ . '/includes/header.php';
 </head>
 <body>
     <div class="dashboard-layout">
-            <?php include __DIR__ . '/dependent/dep-sidebar.php'; ?>
+        <?php include __DIR__ . '/dependent/dep-sidebar.php'; ?>
         <main class="main-content">
 
             <header class="welcome-header" style="margin-bottom: 25px;">
@@ -244,16 +249,16 @@ include __DIR__ . '/includes/header.php';
                 <h2 style="font-size: 20px; color: var(--text-color); margin-bottom: 20px;">جرعات المريض اليوم</h2>
                 <div class="doses-grid">
                     <?php if (!empty($doses_result)): ?>
-                        <?php foreach($doses_result as $row): ?>
+                        <?php foreach ($doses_result as $row): ?>
                             <div class="dose-card">
-                                <h3><?php echo htmlspecialchars($row['medication_name']); ?></h3>
-                                <p class="dose-info">الجرعة: <?php echo htmlspecialchars($row['dose_amount'] . ' ' . $row['dose_unit']); ?></p>
+                                <h3><?php echo htmlspecialchars($row['medication_name'], ENT_QUOTES, 'UTF-8'); ?></h3>
+                                <p class="dose-info">الجرعة: <?php echo htmlspecialchars($row['dose_amount'] . ' ' . $row['dose_unit'], ENT_QUOTES, 'UTF-8'); ?></p>
                                 <p class="dose-time">الوقت: <?php echo date("h:i A", strtotime($row['dosage_time'])); ?></p>
 
                                 <?php if ($row['status'] == 'taken'): ?>
-                                    <button class="status-btn taken">تم تناول الجرعة</button>
+                                    <button type="button" class="status-btn taken">تم تناول الجرعة</button>
                                 <?php else: ?>
-                                    <button class="status-btn pending">بانتظار الموعد</button>
+                                    <button type="button" class="status-btn pending">بانتظار الموعد</button>
                                 <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
