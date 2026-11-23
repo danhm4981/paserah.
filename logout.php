@@ -1,5 +1,6 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
     session_start();
 }
 
