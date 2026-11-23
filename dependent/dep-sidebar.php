@@ -90,11 +90,11 @@
         <h2>لوحة التابع</h2>
     </div>
     <ul class="sidebar-menu">
-        <li><a href="/danah/GProject/paserah/dep-dashboard.php"><span class="icon">🏠</span> الرئيسية</a></li>
-        <li><a href="/danah/GProject/paserah/dependent/dep-medications.php"><span class="icon">💊</span> أدوية المريض</a></li>
-        <li><a href="/danah/GProject/paserah/dependent/dep-add-medications.php"><span class="icon">➕</span> إضافة دواء</a></li>
-        <li><a href="/danah/GProject/paserah/dependent/dep-profile.php"><span class="icon">⚙️</span> الملف الشخصي</a></li>
-        <li class="logout"><a href="/danah/GProject/paserah/logout.php"><span class="icon">🚪</span> تسجيل الخروج</a></li>
+        <li><a href="/danah/hackathon/paserah-hackathon/dep-dashboard.php"><span class="icon">🏠</span> الرئيسية</a></li>
+        <li><a href="/danah/hackathon/paserah-hackathon/dependent/dep-medications.php"><span class="icon">💊</span> أدوية المريض</a></li>
+        <li><a href="/danah/hackathon/paserah-hackathon/dependent/dep-add-medications.php"><span class="icon">➕</span> إضافة دواء</a></li>
+        <li><a href="/danah/hackathon/paserah-hackathon/dependent/dep-profile.php"><span class="icon">⚙️</span> الملف الشخصي</a></li>
+        <li class="logout"><a href="/danah/hackathon/paserah-hackathon/logout.php"><span class="icon">🚪</span> تسجيل الخروج</a></li>
     </ul>
 </aside>
 
