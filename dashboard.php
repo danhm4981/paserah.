@@ -6,105 +6,123 @@ if (session_status() === PHP_SESSION_NONE) {
 date_default_timezone_set('Asia/Riyadh');
 require_once __DIR__ . '/db.php';
 
-if (
-    !isset($_SESSION['user_id']) ||
-    ($_SESSION['account_type'] ?? '') !== 'patient'
-) {
+// التحقق من تسجيل الدخول
+$patient_id = (int) ($_SESSION['user_id'] ?? 0);
+if (!$patient_id) {
+    if (isset($_GET['ajax'])) {
+        http_response_code(401);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false]);
+        exit;
+    }
     header('Location: login.php');
     exit;
 }
-
-$patient_id = (int) $_SESSION['user_id'];
 
 function h($v) {
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-// ===== تم أخذ الجرعة / لم آخذها =====
-$dose_message = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dose_action'])) {
-    $schedule_id = (int) ($_POST['schedule_id'] ?? 0);
-    $new_status  = $_POST['dose_action'];
-
-    if (in_array($new_status, ['taken', 'missed'], true)) {
-        try {
-            $stmt = $pdo->prepare("
-                UPDATE dosage_schedules ds
-                JOIN medications m ON ds.medication_id = m.medication_id
-                SET ds.status = ?
-                WHERE ds.schedule_id = ? AND m.user_id = ?
-            ");
-            $stmt->execute([$new_status, $schedule_id, $patient_id]);
-            $dose_message = $stmt->rowCount() > 0 ? 'تم تحديث حالة الجرعة.' : 'تعذر تحديث الجرعة.';
-        } catch (PDOException $e) {
-            error_log($e->getMessage());
-            $dose_message = 'حدث خطأ أثناء تحديث الجرعة.';
-        }
-    }
+// الوقت بصيغة 12 ساعة بالعربي (ص / م)
+function fmt12($time) {
+    $ts = strtotime($time);
+    $hr = (int) date('G', $ts);
+    $p  = $hr >= 12 ? 'م' : 'ص';
+    $hr = $hr % 12 ?: 12;
+    return $hr . ':' . date('i', $ts) . ' ' . $p;
 }
 
-include __DIR__ . '/includes/header.php';
-
 // ===== أيام الأسبوع (يبدأ من السبت) =====
-$today       = date('Y-m-d');
-$since_sat   = ((int) date('w') + 1) % 7;
-$week_start  = date('Y-m-d', strtotime("-$since_sat days"));
-$week_end    = date('Y-m-d', strtotime("$week_start +6 days"));
-$day_names   = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
-$week_days   = [];
+$today      = date('Y-m-d');
+$nowTs      = time();
+$since_sat  = ((int) date('w') + 1) % 7;
+$week_start = date('Y-m-d', strtotime("-$since_sat days"));
+$week_end   = date('Y-m-d', strtotime("$week_start +6 days"));
+$day_names  = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+$week_days  = [];
 for ($i = 0; $i < 7; $i++) {
     $week_days[] = date('Y-m-d', strtotime("$week_start +$i days"));
 }
 
-$by_day = [];
-foreach ($week_days as $d) {
-    $by_day[$d] = [];
-}
+// المهلة بعد موعد الجرعة قبل اعتبارها «لم يرد» (بالثواني)
+const NORESP_GRACE = 120;
+
+$by_day = [];   // الجرعات لكل يوم
+$states = [];   // "scheduleId|YYYY-MM-DD" => taken | missed | noresp | pending
 
 try {
-    $cols = $pdo->query("SHOW COLUMNS FROM dosage_schedules")->fetchAll(PDO::FETCH_COLUMN);
-    $has_range = in_array('start_date', $cols, true) && in_array('end_date', $cols, true);
+    // الجرعات الفعّالة خلال الأسبوع للمستخدم الحالي فقط
+    $stmt = $pdo->prepare("
+        SELECT ds.schedule_id, ds.start_date, ds.end_date, ds.dose_amount, ds.dose_unit,
+               ds.dosage_time, m.medication_id, m.medication_name
+        FROM dosage_schedules ds
+        JOIN medications m ON ds.medication_id = m.medication_id
+        WHERE m.user_id = ?
+          AND ds.start_date <= ?
+          AND (ds.end_date IS NULL OR ds.end_date >= ?)
+        ORDER BY ds.dosage_time ASC, m.medication_name ASC
+    ");
+    $stmt->execute([$patient_id, $week_end, $week_start]);
+    $schedules = $stmt->fetchAll();
 
-    if ($has_range) {
-        $stmt = $pdo->prepare("
-            SELECT ds.schedule_id, ds.start_date, ds.end_date, ds.dose_amount, ds.dose_unit,
-                   ds.dosage_time, ds.status, m.medication_id, m.medication_name
-            FROM dosage_schedules ds
-            JOIN medications m ON ds.medication_id = m.medication_id
-            WHERE m.user_id = ?
-              AND ds.start_date <= ?
-              AND (ds.end_date IS NULL OR ds.end_date >= ?)
-            ORDER BY ds.dosage_time ASC
-        ");
-        $stmt->execute([$patient_id, $week_end, $week_start]);
-        foreach ($stmt->fetchAll() as $row) {
-            foreach ($week_days as $d) {
-                if ($row['start_date'] <= $d && ($row['end_date'] === null || $row['end_date'] >= $d)) {
-                    $by_day[$d][] = $row;
+    // ردود المستخدم خلال الأسبوع (من جدول التنبيهات، لكل يوم على حدة)
+    $stmt = $pdo->prepare("
+        SELECT schedule_id, dose_response, notification_time
+        FROM notifications
+        WHERE user_id = ?
+          AND dose_response IS NOT NULL
+          AND notification_time >= ?
+          AND notification_time < ?
+        ORDER BY notification_time ASC
+    ");
+    $stmt->execute([
+        $patient_id,
+        $week_start . ' 00:00:00',
+        date('Y-m-d', strtotime("$week_end +1 day")) . ' 00:00:00'
+    ]);
+    $responses = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $responses[$r['schedule_id'] . '|' . substr($r['notification_time'], 0, 10)] = $r['dose_response'];
+    }
+
+    foreach ($week_days as $d) {
+        $by_day[$d] = [];
+    }
+    foreach ($schedules as $row) {
+        foreach ($week_days as $d) {
+            if ($row['start_date'] <= $d && ($row['end_date'] === null || $row['end_date'] >= $d)) {
+                $key = $row['schedule_id'] . '|' . $d;
+                if (isset($responses[$key])) {
+                    $state = $responses[$key];
+                } elseif ($d > $today) {
+                    $state = 'pending';
+                } else {
+                    $due   = strtotime($d . ' ' . $row['dosage_time']);
+                    $state = ($nowTs >= $due + NORESP_GRACE) ? 'noresp' : 'pending';
                 }
-            }
-        }
-    } else {
-        $stmt = $pdo->prepare("
-            SELECT ds.schedule_id, ds.dosage_date AS d, ds.dose_amount, ds.dose_unit,
-                   ds.dosage_time, ds.status, m.medication_id, m.medication_name
-            FROM dosage_schedules ds
-            JOIN medications m ON ds.medication_id = m.medication_id
-            WHERE m.user_id = ?
-              AND ds.dosage_date BETWEEN ? AND ?
-            ORDER BY ds.dosage_time ASC
-        ");
-        $stmt->execute([$patient_id, $week_start, $week_end]);
-        foreach ($stmt->fetchAll() as $row) {
-            if (isset($by_day[$row['d']])) {
-                $by_day[$row['d']][] = $row;
+                $row['state'] = $state;
+                $row['key']   = $key;
+                $by_day[$d][] = $row;
+                $states[$key] = $state;
             }
         }
     }
 } catch (PDOException $e) {
     error_log($e->getMessage());
+    foreach ($week_days as $d) {
+        if (!isset($by_day[$d])) $by_day[$d] = [];
+    }
 }
+
+// طلب التحديث التلقائي: يرجع الحالات فقط
+if (isset($_GET['ajax'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode(['ok' => true, 'states' => (object)$states], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+include __DIR__ . '/includes/header.php';
 
 // جرعات اليوم مجمّعة حسب الدواء
 $by_med = [];
@@ -121,6 +139,7 @@ foreach ($by_day as $rows) {
         $meds_in_week[$r['medication_id']] = true;
     }
 }
+$sym = ['taken' => '✓', 'missed' => '✕', 'noresp' => '!', 'pending' => '🕒'];
 ?>
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -215,15 +234,9 @@ foreach ($by_day as $rows) {
         }
         .dose-circle.taken   { background: #e3f6e3; color: #1e9e2f; }
         .dose-circle.missed  { background: #fdebd3; color: #e08a00; }
+        .dose-circle.noresp  { background: #fde4e2; color: #d93025; }
         .dose-circle.pending { background: #eceff0; color: #667; }
         .dose-time { font-size: 13px; color: var(--text-muted, #667); }
-        .dose-actions { display: flex; gap: 4px; }
-        .dose-actions button {
-            border: 0; border-radius: 12px; padding: 4px 9px;
-            font-family: inherit; font-size: 12px; cursor: pointer;
-        }
-        .btn-take { background: var(--primary-color, #008080); color: #fff; }
-        .btn-miss { background: #fdebd3; color: #b45f00; }
 
         /* جدول الأسبوع */
         .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
@@ -234,22 +247,22 @@ foreach ($by_day as $rows) {
             font-size: 11px; color: #fff;
         }
         .week-cell.taken   { background: #17a82a; }
-        .week-cell.pending { background: #f0c020; color: #5a4600; }
+        .week-cell.pending { background: #eceff0; color: #667; }
         .week-cell.missed  { background: #e5772d; }
+        .week-cell.noresp  { background: #d93025; }
         .week-cell.empty   { background: transparent; border: 1px dashed #dde3e4; }
         .week-label { text-align: center; font-size: 14px; margin-top: 4px; color: var(--text-color, #222); }
         .week-label.today { color: var(--primary-color, #008080); font-weight: 800; }
-        .legend { display: flex; gap: 16px; justify-content: center; margin-top: 18px; font-size: 13px; color: var(--text-muted, #667); }
+        .legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 18px; font-size: 13px; color: var(--text-muted, #667); }
         .legend span::before {
             content: ""; display: inline-block; width: 12px; height: 12px;
             border-radius: 4px; margin-left: 6px; vertical-align: middle;
         }
         .legend .l-taken::before   { background: #17a82a; }
-        .legend .l-pending::before { background: #f0c020; }
         .legend .l-missed::before  { background: #e5772d; }
+        .legend .l-noresp::before  { background: #d93025; }
 
         .empty-notice { padding: 30px; text-align: center; color: var(--text-muted, #667); }
-        .flash { margin-bottom: 14px; color: var(--primary-color, #008080); }
 
         @media (max-width: 700px) {
             .week-grid { gap: 6px; }
@@ -277,10 +290,6 @@ foreach ($by_day as $rows) {
                     </div>
                 </div>
 
-                <?php if ($dose_message): ?>
-                    <p class="flash"><?= h($dose_message) ?></p>
-                <?php endif; ?>
-
                 <!-- عرض اليوم -->
                 <div class="view-panel active" id="view-today">
                     <div class="card-title">📅 <span>جرعات اليوم</span></div>
@@ -299,7 +308,7 @@ foreach ($by_day as $rows) {
                                     $total = count($med['doses']);
                                     $done  = 0;
                                     foreach ($med['doses'] as $d) {
-                                        if ($d['status'] === 'taken') $done++;
+                                        if ($d['state'] === 'taken') $done++;
                                     }
                                 ?>
                                 <tr>
@@ -311,23 +320,8 @@ foreach ($by_day as $rows) {
                                         <div class="doses-row">
                                         <?php foreach ($med['doses'] as $d): ?>
                                             <div class="dose-item">
-                                                <?php if ($d['status'] === 'taken'): ?>
-                                                    <div class="dose-circle taken">✓</div>
-                                                <?php elseif ($d['status'] === 'missed'): ?>
-                                                    <div class="dose-circle missed">✕</div>
-                                                <?php else: ?>
-                                                    <div class="dose-circle pending">🕒</div>
-                                                <?php endif; ?>
-
-                                                <div class="dose-time"><?= h(date('h:i A', strtotime($d['dosage_time']))) ?></div>
-
-                                                <?php if ($d['status'] === 'pending'): ?>
-                                                    <form method="POST" class="dose-actions">
-                                                        <input type="hidden" name="schedule_id" value="<?= (int)$d['schedule_id'] ?>">
-                                                        <button type="submit" name="dose_action" value="taken" class="btn-take">تم أخذها</button>
-                                                        <button type="submit" name="dose_action" value="missed" class="btn-miss">لم آخذها</button>
-                                                    </form>
-                                                <?php endif; ?>
+                                                <div class="dose-circle <?= h($d['state']) ?>" data-key="<?= h($d['key']) ?>"><?= $sym[$d['state']] ?></div>
+                                                <div class="dose-time"><?= h(fmt12($d['dosage_time'])) ?></div>
                                             </div>
                                         <?php endforeach; ?>
                                         </div>
@@ -351,12 +345,11 @@ foreach ($by_day as $rows) {
                                     <div class="week-cell empty"></div>
                                 <?php else: ?>
                                     <?php foreach ($by_day[$d] as $r): ?>
-                                        <?php
-                                            $cls = in_array($r['status'], ['taken', 'missed'], true) ? $r['status'] : 'pending';
-                                        ?>
-                                        <div class="week-cell <?= h($cls) ?>"
-                                             title="<?= h($r['medication_name'] . ' - ' . date('h:i A', strtotime($r['dosage_time']))) ?>">
-                                            <?= h(date('h:i', strtotime($r['dosage_time']))) ?>
+                                        <div class="week-cell <?= h($r['state']) ?>"
+                                             data-key="<?= h($r['key']) ?>"
+                                             data-time="<?= h(date('h:i', strtotime($r['dosage_time']))) ?>"
+                                             title="<?= h($r['medication_name'] . ' - ' . fmt12($r['dosage_time'])) ?>">
+                                            <?= $r['state'] === 'pending' ? '🕒 ' : '' ?><?= h(date('h:i', strtotime($r['dosage_time']))) ?>
                                         </div>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -367,8 +360,8 @@ foreach ($by_day as $rows) {
 
                     <div class="legend">
                         <span class="l-taken">تم أخذها</span>
-                        <span class="l-pending">بانتظار الموعد</span>
                         <span class="l-missed">لم تؤخذ</span>
+                        <span class="l-noresp">لم يرد</span>
                     </div>
                 </div>
             </section>
@@ -377,6 +370,7 @@ foreach ($by_day as $rows) {
     </div>
 
     <script>
+        // التبديل بين اليوم والأسبوع
         document.querySelectorAll('.view-tabs button').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 document.querySelectorAll('.view-tabs button').forEach(function (b) { b.classList.remove('active'); });
@@ -384,6 +378,42 @@ foreach ($by_day as $rows) {
                 btn.classList.add('active');
                 document.getElementById('view-' + btn.dataset.view).classList.add('active');
             });
+        });
+
+        // ===== التحديث التلقائي كل 30 ثانية =====
+        var SYM = { taken: '✓', missed: '✕', noresp: '!', pending: '🕒' };
+
+        function applyStates(states) {
+            document.querySelectorAll('[data-key]').forEach(function (el) {
+                var s = states[el.dataset.key] || 'pending';
+                if (el.classList.contains('dose-circle')) {
+                    el.className = 'dose-circle ' + s;
+                    el.textContent = SYM[s];
+                } else {
+                    el.className = 'week-cell ' + s;
+                    el.textContent = (s === 'pending' ? '🕒 ' : '') + el.dataset.time;
+                }
+            });
+            // تحديث عدّاد «x من y» لكل دواء
+            document.querySelectorAll('.meds-table tbody tr').forEach(function (tr) {
+                var sub = tr.querySelector('.med-sub');
+                if (!sub) return;
+                var done  = tr.querySelectorAll('.dose-circle.taken').length;
+                var total = tr.querySelectorAll('.dose-circle').length;
+                sub.textContent = done + ' من ' + total;
+            });
+        }
+
+        function refreshStates() {
+            fetch(location.pathname + '?ajax=1', { cache: 'no-store', credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) { if (data && data.ok) applyStates(data.states); })
+                .catch(function () {});
+        }
+
+        setInterval(refreshStates, 30000);
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) refreshStates();
         });
     </script>
 
