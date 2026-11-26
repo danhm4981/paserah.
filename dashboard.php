@@ -417,6 +417,7 @@ $sym = ['taken' => '✓', 'missed' => '✕', 'noresp' => '!', 'pending' => '🕒
         });
     </script>
 
-    <?php include __DIR__ . '/includes/footer.php'; ?>
+    <?php include __DIR__ . '/assistant_widget.php'; 
+     include __DIR__ . '/includes/footer.php'; ?>
 </body>
 </html>
