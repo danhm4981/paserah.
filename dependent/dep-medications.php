@@ -29,6 +29,11 @@ function valid_date(string $d): bool
     return $dt && $dt->format('Y-m-d') === $d;
 }
 
+function valid_time($t): bool
+{
+    return is_string($t) && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?\z/', $t) === 1;
+}
+
 function detect_duration_key(?string $start_date, ?string $end_date): string
 {
     if (empty($end_date)) {
@@ -126,6 +131,7 @@ $patient = null;
 $patient_id = 0;
 $link_status = null; // pending / rejected / null
 $medications = [];
+$dose_times = [];
 $error = "";
 
 try {
@@ -211,9 +217,17 @@ try {
                         $end_date = date('Y-m-d', strtotime('+' . max(0, $days - 1) . ' days'));
                     }
 
+                    // أوقات الجرعات المرسلة من النموذج
+                    $posted_times = array_values((array) ($_POST['dose_times'] ?? []));
+                    if ($dates_valid && (count($posted_times) !== $doses_count
+                        || count(array_filter($posted_times, 'valid_time')) !== $doses_count)) {
+                        $dates_valid = false;
+                        $error = "وقت الجرعة غير صحيح.";
+                    }
+
                     if ($dates_valid) {
                         $stmt_old_times = $pdo->prepare("
-                            SELECT dosage_time, dose_amount, dose_unit, status
+                            SELECT schedule_id, dosage_time, dose_amount, dose_unit, status
                             FROM dosage_schedules
                             WHERE medication_id = ?
                             ORDER BY dosage_time ASC, schedule_id ASC
@@ -221,8 +235,7 @@ try {
                         $stmt_old_times->execute([$id]);
                         $old_rows = $stmt_old_times->fetchAll();
 
-                        $old_times = array_column($old_rows, 'dosage_time');
-                        $new_times = build_times_for_count($doses_count, $old_times);
+                        $new_times = build_times_for_count($doses_count, $posted_times);
 
                         $pdo->beginTransaction();
 
@@ -233,7 +246,21 @@ try {
                         ");
                         $stmt_upd_med->execute([$name, $id, $patient_id]);
 
-                        $pdo->prepare("DELETE FROM dosage_schedules WHERE medication_id = ?")->execute([$id]);
+                        // تحديث الجرعة الموجودة بنفس رقمها حتى لا ينقطع ربطها بالتنبيهات
+                        $stmt_upd_sched = $pdo->prepare("
+                            UPDATE dosage_schedules
+                            SET dosage_time = :dosage_time, start_date = :start_date, end_date = :end_date
+                            WHERE schedule_id = :schedule_id AND medication_id = :medication_id
+                        ");
+
+                        // تعديل وقت التنبيهات غير المقروءة وغير المرسلة (مع بقاء تاريخها)
+                        $stmt_upd_notif = $pdo->prepare("
+                            UPDATE notifications
+                            SET notification_time = TIMESTAMP(DATE(notification_time), :dosage_time)
+                            WHERE schedule_id = :schedule_id
+                              AND in_site_status = 'unread'
+                              AND email_status <> 'sent'
+                        ");
 
                         $stmt_ins_sched = $pdo->prepare("
                             INSERT INTO dosage_schedules
@@ -244,6 +271,24 @@ try {
 
                         foreach ($new_times as $idx => $time_val) {
                             $prev = $old_rows[$idx] ?? null;
+
+                            if ($prev) {
+                                $stmt_upd_sched->execute([
+                                    'dosage_time'   => $time_val,
+                                    'start_date'    => $start_date,
+                                    'end_date'      => $end_date,
+                                    'schedule_id'   => $prev['schedule_id'],
+                                    'medication_id' => $id,
+                                ]);
+                                if (substr($prev['dosage_time'], 0, 5) !== substr($time_val, 0, 5)) {
+                                    $stmt_upd_notif->execute([
+                                        'dosage_time' => $time_val,
+                                        'schedule_id' => $prev['schedule_id'],
+                                    ]);
+                                }
+                                continue;
+                            }
+
                             $stmt_ins_sched->execute([
                                 'medication_id' => $id,
                                 'dose_amount'   => $prev['dose_amount'] ?? 1,
@@ -253,6 +298,16 @@ try {
                                 'end_date'      => $end_date,
                                 'status'        => $prev['status'] ?? 'pending',
                             ]);
+                        }
+
+                        // عند تقليل عدد الجرعات: حذف الجرعات الزائدة وتنبيهاتها المنتظرة
+                        foreach (array_slice($old_rows, count($new_times)) as $extra) {
+                            $pdo->prepare("
+                                DELETE FROM notifications
+                                WHERE schedule_id = ? AND in_site_status = 'unread' AND email_status <> 'sent'
+                            ")->execute([$extra['schedule_id']]);
+                            $pdo->prepare("DELETE FROM dosage_schedules WHERE schedule_id = ?")
+                                ->execute([$extra['schedule_id']]);
                         }
 
                         $pdo->commit();
@@ -279,6 +334,18 @@ try {
         ");
         $stmt->execute([$patient_id]);
         $medications = $stmt->fetchAll();
+
+        $stmt_times = $pdo->prepare("
+            SELECT s.medication_id, s.dosage_time
+            FROM dosage_schedules s
+            JOIN medications m ON m.medication_id = s.medication_id
+            WHERE m.user_id = ?
+            ORDER BY s.dosage_time ASC, s.schedule_id ASC
+        ");
+        $stmt_times->execute([$patient_id]);
+        foreach ($stmt_times->fetchAll() as $row) {
+            $dose_times[(int) $row['medication_id']][] = $row['dosage_time'];
+        }
     }
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) {
@@ -420,6 +487,9 @@ include __DIR__ . '/../includes/header.php';
             font-size: 14px;
             background: #fff;
         }
+        .times-box input {
+            margin-bottom: 6px;
+        }
         .custom-dates-box {
             display: none;
             margin-bottom: 10px;
@@ -517,7 +587,19 @@ include __DIR__ . '/../includes/header.php';
                                 <div class="edit-field">
                                     <label for="doses-<?= $med_id ?>">عدد الجرعات يومياً</label>
                                     <input type="number" id="doses-<?= $med_id ?>" name="doses_count"
-                                           min="1" step="1" value="<?= $current_doses ?>" required>
+                                           min="1" max="<?= max(24, $current_doses) ?>" step="1" value="<?= $current_doses ?>"
+                                           oninput="syncTimeInputs(<?= $med_id ?>)" required>
+                                </div>
+
+                                <div class="edit-field">
+                                    <label>وقت الجرعات</label>
+                                    <div class="times-box" id="times-<?= $med_id ?>">
+                                        <?php foreach (build_times_for_count($current_doses, $dose_times[$med_id] ?? []) as $t_idx => $t_val): ?>
+                                            <input type="time" name="dose_times[]"
+                                                   value="<?= htmlspecialchars(substr($t_val, 0, 5), ENT_QUOTES, 'UTF-8') ?>"
+                                                   aria-label="وقت الجرعة <?= $t_idx + 1 ?>" required>
+                                        <?php endforeach; ?>
+                                    </div>
                                 </div>
 
                                 <div class="edit-field">
@@ -565,6 +647,29 @@ include __DIR__ . '/../includes/header.php';
         function toggleEdit(id) {
             const form = document.getElementById('edit-' + id);
             form.classList.toggle('active');
+        }
+        // إظهار خانة وقت لكل جرعة حسب عدد الجرعات
+        function syncTimeInputs(id) {
+            const countInput = document.getElementById('doses-' + id);
+            const box = document.getElementById('times-' + id);
+            const count = Number(countInput.value);
+            if (!Number.isInteger(count) || count < 1 || count > Number(countInput.max)) return;
+
+            const inputs = box.querySelectorAll('input');
+            const [h, m] = (inputs[0].value || '08:00').split(':').map(Number);
+            const step = Math.round(1440 / count);
+
+            for (let i = inputs.length; i < count; i++) {
+                const total = (h * 60 + m + i * step) % 1440;
+                const input = inputs[0].cloneNode();
+                input.value = String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+                input.setAttribute('aria-label', 'وقت الجرعة ' + (i + 1));
+                box.appendChild(input);
+            }
+
+            box.querySelectorAll('input').forEach((input, i) => {
+                input.hidden = input.disabled = i >= count;
+            });
         }
         function toggleCustomDates(id) {
             const sel = document.getElementById('dur-' + id);
