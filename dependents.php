@@ -6,7 +6,26 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/db.php';
 
-$patient_id = (int) ($_SESSION['user_id'] ?? 1);
+if (session_status() === PHP_SESSION_NONE) {
+    session_name('PASERAH_HACKATHON_SESSION');
+    session_start();
+}
+
+require_once __DIR__ . '/db.php';
+
+$patient_id = (int) ($_SESSION['user_id'] ?? 0);
+
+// لا دخول بدون تسجيل
+if (!$patient_id) {
+    header('Location: login.php');
+    exit;
+}
+
+// الصفحة للمريض فقط، والتابع يرجع للوحته
+if (($_SESSION['account_type'] ?? '') === 'dependent') {
+    header('Location: dep-dashboard.php');
+    exit;
+}
 
 $message = "";
 $error = "";
