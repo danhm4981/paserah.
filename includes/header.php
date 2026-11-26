@@ -1,4 +1,5 @@
 <?php
+// الجلسة لازم تبدأ هنا لأن الهيدر مضمّن في كل صفحات الموقع
 if (session_status() === PHP_SESSION_NONE) {
     session_name('PASERAH_HACKATHON_SESSION');
     session_start();
@@ -8,8 +9,8 @@ $hdr_logged_in = isset($_SESSION['user_id']);
 $hdr_account_type = strtolower(trim($_SESSION['account_type'] ?? ($_SESSION['user_type'] ?? '')));
 
 $hdr_profile_url = ($hdr_account_type === 'dependent')
-    ? '/danah/hackathon/paserah-hackathon/dependent/dep-profile.php'
-    : '/danah/hackathon/paserah-hackathon/profile.php';
+    ? '/hackathon//dependent/dep-profile.php'
+    : '/hackathon/profile.php';
 ?>
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -142,14 +143,14 @@ $hdr_profile_url = ($hdr_account_type === 'dependent')
     <header>
         <nav>
             <div class="logo">
-                <img src="/danah/hackathon/paserah-hackathon/logo.png" alt="شعار بصيرة" style="height: 45px; width: auto; object-fit: contain;">
+                <img src="/hackathon/logo.png" alt="شعار بصيرة" style="height: 45px; width: auto; object-fit: contain;">
                 <span>بصيرة</span>
             </div>
             <ul class="nav-links">
-                <li><a href="/danah/hackathon/paserah-hackathon/index.php">الرئيسية</a></li>
-                <li><a href="/danah/hackathon/paserah-hackathon/about.php">عن بصيرة</a></li>
-                <li><a href="/danah/hackathon/paserah-hackathon/index.php#features">المميزات</a></li>
-                <li><a href="/danah/hackathon/paserah-hackathon/contact.php">تواصل معنا</a></li>
+                <li><a href="/hackathon/index.php">الرئيسية</a></li>
+                <li><a href="/hackathon/about.php">عن بصيرة</a></li>
+                <li><a href="/hackathon/index.php#features">المميزات</a></li>
+                <li><a href="/hackathon/contact.php">تواصل معنا</a></li>
             </ul>
             <div class="buttons">
                 <?php if ($hdr_logged_in): ?>
@@ -164,8 +165,8 @@ $hdr_profile_url = ($hdr_account_type === 'dependent')
                         </svg>
                     </a>
                 <?php else: ?>
-                    <a href="/danah/hackathon/paserah-hackathon/register.php" class="btn btn-outline">إنشاء حساب</a>
-                    <a href="/danah/hackathon/paserah-hackathon/login.php" class="btn btn-primary">تسجيل الدخول</a>
+                    <a href="/hackathon/register.php" class="btn btn-outline">إنشاء حساب</a>
+                    <a href="/hackathon/login.php" class="btn btn-primary">تسجيل الدخول</a>
                 <?php endif; ?>
             </div>
         </nav>
