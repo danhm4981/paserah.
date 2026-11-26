@@ -2,10 +2,10 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1:3306
--- Generation Time: 23 نوفمبر 2026 الساعة 02:57
--- إصدار الخادم: 10.11.16-MariaDB
--- PHP Version: 8.2.12
+-- Host: 127.0.0.1
+-- Generation Time: 14 أكتوبر 2026 الساعة 17:03
+-- إصدار الخادم: 10.4.32-MariaDB
+-- PHP Version: 8.1.25
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -33,8 +33,7 @@ CREATE TABLE `dosage_schedules` (
   `dose_amount` decimal(5,2) NOT NULL,
   `dose_unit` varchar(30) DEFAULT 'حبة',
   `dosage_time` time NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date DEFAULT NULL,
+  `dosage_date` date NOT NULL,
   `status` enum('pending','taken','missed') DEFAULT 'pending'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -42,26 +41,10 @@ CREATE TABLE `dosage_schedules` (
 -- إرجاع أو استيراد بيانات الجدول `dosage_schedules`
 --
 
-INSERT INTO `dosage_schedules` (`schedule_id`, `medication_id`, `dose_amount`, `dose_unit`, `dosage_time`, `start_date`, `end_date`, `status`) VALUES
-(1, 1, 1.00, 'حبة', '08:00:00', '2026-10-05', NULL, 'pending'),
-(2, 1, 1.00, 'حبة', '20:00:00', '2026-10-05', NULL, 'pending'),
-(3, 2, 1.00, 'حبة', '09:00:00', '2026-10-05', NULL, 'pending'),
-(10, 9, 1.00, 'حبة', '08:00:00', '2026-11-23', '2026-11-30', 'taken');
-
--- --------------------------------------------------------
-
---
--- بنية الجدول `dose_logs`
---
-
-CREATE TABLE `dose_logs` (
-  `log_id` int(11) NOT NULL,
-  `schedule_id` int(11) NOT NULL,
-  `log_date` date NOT NULL,
-  `status` enum('taken','missed') NOT NULL,
-  `logged_by` int(11) DEFAULT NULL,
-  `logged_at` datetime NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT INTO `dosage_schedules` (`schedule_id`, `medication_id`, `dose_amount`, `dose_unit`, `dosage_time`, `dosage_date`, `status`) VALUES
+(1, 1, 1.00, 'حبة', '08:00:00', '2026-10-05', 'pending'),
+(2, 1, 1.00, 'حبة', '20:00:00', '2026-10-05', 'pending'),
+(3, 2, 1.00, 'حبة', '09:00:00', '2026-10-05', 'pending');
 
 -- --------------------------------------------------------
 
@@ -85,8 +68,7 @@ CREATE TABLE `medications` (
 
 INSERT INTO `medications` (`medication_id`, `user_id`, `medication_name`, `medication_image`, `medication_description`, `medication_color`, `medication_shape`) VALUES
 (1, 1, 'Panadol', 'panadol.jpg', 'مسكن للألم', 'أبيض', 'دائري'),
-(2, 1, 'Vitamin D', 'vitamin_d.jpg', 'مكمل فيتامين د', 'أصفر', 'دائري'),
-(9, 7, 'بانادول', '1795398511_8205913e.png', NULL, NULL, NULL);
+(2, 1, 'Vitamin D', 'vitamin_d.jpg', 'مكمل فيتامين د', 'أصفر', 'دائري');
 
 -- --------------------------------------------------------
 
@@ -109,6 +91,15 @@ CREATE TABLE `notifications` (
   `read_at` datetime DEFAULT NULL,
   `email_sent_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- إرجاع أو استيراد بيانات الجدول `notifications`
+--
+
+INSERT INTO `notifications` (`notification_id`, `user_id`, `schedule_id`, `notification_type`, `notification_text`, `notification_time`, `audio_text`, `email_status`, `notification_image`, `notification_sound`, `in_site_status`, `read_at`, `email_sent_at`) VALUES
+(1, 1, 1, 'دواء', 'حان موعد تناول البانادول', '2026-10-05 08:00:00', 'حان موعد دواء بانادول، يرجى تناول حبة واحدة', 'pending', NULL, NULL, 'unread', NULL, NULL),
+(2, 1, 3, 'دواء', 'حان موعد تناول فيتامين د', '2026-10-05 09:00:00', 'حان موعد تناول فيتامين د', 'pending', NULL, NULL, 'unread', NULL, NULL),
+(3, 4, 1, 'دواء', 'حان موعد تناول دواء المريض', '2026-10-05 08:00:00', 'حان موعد دواء بانادول للمريض', 'pending', NULL, NULL, 'unread', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -178,8 +169,7 @@ CREATE TABLE `users` (
 INSERT INTO `users` (`user_id`, `username`, `password`, `phone`, `email`, `birth_date`, `account_type`, `created_at`) VALUES
 (1, 'user1', 'demo_hash_1', '0500000001', 'user1@example.com', '2004-05-10', 'patient', '2026-10-04 07:44:40'),
 (3, 'admin', 'demo_hash_3', '0500000003', 'admin@example.com', '1990-01-01', 'admin', '2026-10-04 07:44:40'),
-(4, 'user3', 'demo_hash_4', '0500000004', 'user3@example.com', '2002-04-12', 'dependent', '2026-10-04 20:36:08'),
-(7, 'danah', '$2y$10$VipZoJD0y6Db1DN7l40yKODEvPK5qKAs.Sv9E1vhOLRB7IhRFqveK', '050000000', 'danhm4981@gmail.com', '2005-11-05', 'patient', '2026-11-22 02:24:45');
+(4, 'user3', 'demo_hash_4', '0500000004', 'user3@example.com', '2002-04-12', 'dependent', '2026-10-04 20:36:08');
 
 --
 -- Indexes for dumped tables
@@ -191,13 +181,6 @@ INSERT INTO `users` (`user_id`, `username`, `password`, `phone`, `email`, `birth
 ALTER TABLE `dosage_schedules`
   ADD PRIMARY KEY (`schedule_id`),
   ADD KEY `medication_id` (`medication_id`);
-
---
--- Indexes for table `dose_logs`
---
-ALTER TABLE `dose_logs`
-  ADD PRIMARY KEY (`log_id`),
-  ADD UNIQUE KEY `uq_schedule_day` (`schedule_id`,`log_date`);
 
 --
 -- Indexes for table `medications`
@@ -245,31 +228,25 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `dosage_schedules`
 --
 ALTER TABLE `dosage_schedules`
-  MODIFY `schedule_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
-
---
--- AUTO_INCREMENT for table `dose_logs`
---
-ALTER TABLE `dose_logs`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `schedule_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `medications`
 --
 ALTER TABLE `medications`
-  MODIFY `medication_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `medication_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `notification_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `notification_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `patient_dependents`
 --
 ALTER TABLE `patient_dependents`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `subscriptions`
@@ -281,7 +258,7 @@ ALTER TABLE `subscriptions`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- قيود الجداول المُلقاة.
@@ -292,12 +269,6 @@ ALTER TABLE `users`
 --
 ALTER TABLE `dosage_schedules`
   ADD CONSTRAINT `dosage_schedules_ibfk_1` FOREIGN KEY (`medication_id`) REFERENCES `medications` (`medication_id`) ON DELETE CASCADE;
-
---
--- قيود الجداول `dose_logs`
---
-ALTER TABLE `dose_logs`
-  ADD CONSTRAINT `dose_logs_fk` FOREIGN KEY (`schedule_id`) REFERENCES `dosage_schedules` (`schedule_id`) ON DELETE CASCADE;
 
 --
 -- قيود الجداول `medications`
