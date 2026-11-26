@@ -85,16 +85,20 @@
             padding: 40px;
         }
     </style>
+<?php
+$__root = str_replace('\\', '/', dirname(__DIR__));
+$__doc  = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']));
+$__b    = rtrim(substr($__root, strlen($__doc)), '/');
+?>
 <aside class="sidebar">
     <div class="sidebar-header">
         <h2>لوحة التابع</h2>
     </div>
     <ul class="sidebar-menu">
-        <li><a href="/danah/hackathon/paserah-hackathon/dep-dashboard.php"><span class="icon">🏠</span> الرئيسية</a></li>
-        <li><a href="/danah/hackathon/paserah-hackathon/dependent/dep-medications.php"><span class="icon">💊</span> أدوية المريض</a></li>
-        <li><a href="/danah/hackathon/paserah-hackathon/dependent/dep-add-medications.php"><span class="icon">➕</span> إضافة دواء</a></li>
-        <li><a href="/danah/hackathon/paserah-hackathon/dependent/dep-profile.php"><span class="icon">⚙️</span> الملف الشخصي</a></li>
-        <li class="logout"><a href="/danah/hackathon/paserah-hackathon/logout.php"><span class="icon">🚪</span> تسجيل الخروج</a></li>
+        <li><a href="<?= $__b ?>/dep-dashboard.php"><span class="icon">🏠</span> الرئيسية</a></li>
+        <li><a href="<?= $__b ?>/dependent/dep-medications.php"><span class="icon">💊</span> أدوية المريض</a></li>
+        <li><a href="<?= $__b ?>/dependent/dep-add-medications.php"><span class="icon">➕</span> إضافة دواء</a></li>
+        <li><a href="<?= $__b ?>/dependent/dep-profile.php"><span class="icon">⚙️</span> الملف الشخصي</a></li>
+        <li class="logout"><a href="<?= $__b ?>/logout.php"><span class="icon">🚪</span> تسجيل الخروج</a></li>
     </ul>
 </aside>
-
