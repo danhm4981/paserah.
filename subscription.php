@@ -305,7 +305,8 @@ $current_sub = $stmt_curr->fetch(PDO::FETCH_ASSOC);
     </main>
 </div>
 
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php include __DIR__ . '/assistant_widget.php'; 
+include __DIR__ . '/includes/footer.php'; ?>
 
 </body>
 </html>
